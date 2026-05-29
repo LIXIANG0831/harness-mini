@@ -19,8 +19,8 @@ from agents import (
 )
 from openai import AsyncOpenAI
 
-from state_machine import TaskStateMachine
-from build_in.tools import init_tools, get_all_tools
+from runtime import TaskStateMachine, PlanningTools
+from build_in.tools import OvTools, ShellTools
 from build_in.prompts import get_main_agent_instructions, load_skills_index, build_nudge_message
 
 # ==================== 校验配置 ====================
@@ -45,18 +45,24 @@ try:
 except Exception:
     pass
 
-# ==================== 任务规划状态机 ====================
+# ==================== 状态机 ====================
 _sm = TaskStateMachine()
+planning_tools = PlanningTools(state_machine=_sm)
 
 # ==================== 初始化工具集 ====================
-init_tools(
+bash_tools = ShellTools()
+ov_tools = OvTools(
     ov_client=ov_client,
     uri_user=config.URI_USER,
     uri_agent=config.URI_AGENT,
     mem_session=config.OV_MEM_SESSION,
-    state_machine=_sm,
 )
-TOOLS = get_all_tools()
+
+TOOLS = (
+    planning_tools.get_all_tools()
+    + ov_tools.get_all_tools()
+    + bash_tools.get_all_tools()
+)
 
 
 # ==================== Skills 预加载 ====================

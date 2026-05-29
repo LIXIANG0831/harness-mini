@@ -1,15 +1,19 @@
-"""任务规划相关工具：基于状态机封装的 plan_task / next_step 等。"""
+"""任务规划工具：基于 TaskStateMachine 暴露给 LLM 的控制流原语。
+
+与 build_in.tools 下的 capability 工具不同，这里的工具直接操作 runtime
+内核状态机（_sm），是 harness 控制流的一部分，因此与 state_machine 同
+属 runtime 包。
+"""
 import json
+from typing import List, Any
+
 from agents import function_tool
 
-# 全局状态机实例（在初始化时注入）
+from build_in.tools.base_tools import BaseTools
+from .state_machine import TaskStatus
+
+# 模块级变量：@function_tool 闭包通过此引用读取，由 PlanningTools.__init__ 注入
 _sm = None
-
-
-def init_planning_tools(state_machine):
-    """注入状态机实例。"""
-    global _sm
-    _sm = state_machine
 
 
 @function_tool
@@ -18,7 +22,6 @@ def plan_task(goal: str, steps: str) -> str:
     goal: 任务目标描述
     steps: JSON 数组格式的步骤列表，每个步骤是一个字符串。例如: '["步骤1", "步骤2", "步骤3"]'
     创建计划后，使用 next_step 逐步推进执行。"""
-    from state_machine import TaskStatus
     print(f"🔧 [plan_task] goal={goal}")
     try:
         step_list = json.loads(steps)
@@ -26,7 +29,6 @@ def plan_task(goal: str, steps: str) -> str:
             return "❌ steps 必须是非空 JSON 数组"
     except json.JSONDecodeError:
         return "❌ steps 格式错误，需要 JSON 数组，如 '[\"步骤1\", \"步骤2\"]'"
-    # 如果有旧计划先 reset
     if _sm.status != TaskStatus.IDLE:
         _sm.reset()
     _sm.plan(goal=goal, steps=step_list)
@@ -53,7 +55,6 @@ def next_step(result: str = "") -> str:
     print(f"🔧 [next_step] 完成第 {idx+1} 步: {step.desc}")
     next_s = _sm.complete_step(result=result)
     if next_s is None:
-        # 全部完成
         return f"✅ 全部 {len(_sm.steps)} 步已完成！可以给用户最终回复了。\n\n{_sm.format()}"
     remaining = len(_sm.steps) - _sm.current_step
     progress = f"[{_sm.current_step}/{len(_sm.steps)}]"
@@ -93,3 +94,19 @@ def fail_current_step(error: str) -> str:
 def get_plan_status() -> str:
     """查看当前任务计划的执行状态。"""
     return _sm.format()
+
+
+class PlanningTools(BaseTools):
+    """任务规划工具集。构造时传入 TaskStateMachine 实例。"""
+
+    def __init__(self, state_machine):
+        globals()["_sm"] = state_machine
+
+    def get_all_tools(self) -> List[Any]:
+        return [
+            plan_task,
+            next_step,
+            skip_step,
+            fail_current_step,
+            get_plan_status,
+        ]

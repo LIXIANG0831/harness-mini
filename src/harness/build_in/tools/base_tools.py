@@ -1,31 +1,20 @@
-"""通用工具：Bash 执行等。"""
-import subprocess
-from agents import function_tool
+"""工具基类。
+
+所有工具集合（OV、Planning、Bash 等）继承 BaseTools，
+在 __init__ 中接收依赖、实现 get_all_tools() 返回 function_tool 列表。
+
+使用：
+    ov = OvTools(ov_client=..., uri_user=..., uri_agent=..., mem_session=...)
+    tools = ov.get_all_tools()
+"""
+from abc import ABC, abstractmethod
+from typing import Any, List
 
 
-@function_tool
-def run_bash(command: str) -> str:
-    """在本地执行 shell 命令并返回执行结果。可用于运行脚本、文件操作等。注意：命令在当前工作目录执行。"""
-    print(f"🔧 [执行命令] {command}")
-    try:
-        r = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        output = ""
-        if r.stdout:
-            output += r.stdout
-        if r.stderr:
-            output += f"[stderr]\n{r.stderr}"
-        if r.returncode != 0:
-            output += f"\n[退出码] {r.returncode}"
-        result = output.strip() or f"(命令执行完成，无输出)"
-        print(f"🔧 [执行结果] returncode={r.returncode} {output[:1000]}")
-        return result
-    except subprocess.TimeoutExpired:
-        return "❌ 命令执行超时（120秒）"
-    except Exception as e:
-        return f"❌ 命令执行失败: {e}"
+class BaseTools(ABC):
+    """工具集合抽象基类。子类在构造时完成依赖注入，并实现 get_all_tools()。"""
+
+    @abstractmethod
+    def get_all_tools(self) -> List[Any]:
+        """返回该工具集对外暴露的 function_tool 列表。"""
+        raise NotImplementedError

@@ -1,26 +1,21 @@
 """OpenViking 三层渐进记忆系统的工具集合。
 
 提供资源添加、记忆提取、检索（L0/L1/L2）、技能加载等能力。
-所有工具通过 init_ov_tools() 注入 ov_client 与 URI 配置后使用。
+通过 OvTools(BaseTools) 在构造时注入 ov_client 与 URI 配置后使用。
 """
 import os
 import uuid
+from typing import List, Any
+
 from agents import function_tool
 
-# 这些变量将在初始化时从外部注入
+from .base_tools import BaseTools
+
+# 模块级变量：@function_tool 闭包通过此引用读取，由 OvTools.__init__ 注入
 ov_client = None
 URI_USER = None
 URI_AGENT = None
 OV_MEM_SESSION = None
-
-
-def init_ov_tools(client, user_uri, agent_uri, mem_session):
-    """初始化 OV 工具所需的全局变量"""
-    global ov_client, URI_USER, URI_AGENT, OV_MEM_SESSION
-    ov_client = client
-    URI_USER = user_uri
-    URI_AGENT = agent_uri
-    OV_MEM_SESSION = mem_session
 
 
 @function_tool
@@ -50,7 +45,6 @@ def ov_extract_memory(content: str) -> str:
         ov_client.add_message(tmp_sid, role="user", content=content)
         ov_client.commit_session(tmp_sid)
         ov_client.wait_processed()
-        # 清理一次性 session
         try:
             ov_client.delete_session(tmp_sid)
         except Exception:
@@ -111,7 +105,6 @@ def ov_find(query: str, scope: str = "user") -> str:
     target = scope_map.get(scope.lower(), scope)
     try:
         r = ov_client.find(query, target_uri=target, limit=5, score_threshold=0.25)
-        # 合并 memories 和 resources（之前 or 短路会丢一边）
         memories = list(getattr(r, "memories", []) or [])
         resources = list(getattr(r, "resources", []) or [])
         items = memories + resources
@@ -247,7 +240,6 @@ def ov_add_skill(path: str) -> str:
         r = ov_client.add_skill(path)
         ov_client.wait_processed()
         print(f"🔧 [原始返回] {r!r}")
-        # 兼容多种返回格式
         if isinstance(r, dict):
             uri = r.get("uri") or r.get("root_uri") or "unknown"
             aux = r.get("auxiliary_files", [])
@@ -273,7 +265,6 @@ def ov_load_skill(skill_uri: str) -> str:
     skill_uri 格式: viking://agent/{agentId}/skills/{skill-name}/ 或具体的 SKILL.md URI。"""
     print(f"🔧 [ov_load_skill] uri={skill_uri}")
     try:
-        # 先尝试列出目录，找到 SKILL.md
         if not skill_uri.endswith(".md"):
             items = ov_client.ls(skill_uri)
             skill_md = next(
@@ -293,3 +284,33 @@ def ov_load_skill(skill_uri: str) -> str:
             return content
         except Exception as e:
             return f"加载 skill 失败: {e}"
+
+
+class OvTools(BaseTools):
+    """OpenViking 三层记忆系统工具集。
+
+    构造时传入 ov_client / uri_user / uri_agent / mem_session 即完成初始化。
+    """
+
+    def __init__(self, ov_client, uri_user: str, uri_agent: str, mem_session: str):
+        # 注入到模块级变量，供 @function_tool 闭包读取
+        globals()["ov_client"] = ov_client
+        globals()["URI_USER"] = uri_user
+        globals()["URI_AGENT"] = uri_agent
+        globals()["OV_MEM_SESSION"] = mem_session
+
+    def get_all_tools(self) -> List[Any]:
+        return [
+            ov_add_resource,
+            ov_extract_memory,
+            ov_extract_experience,
+            ov_update_memory,
+            ov_rm,
+            ov_ls,
+            ov_find,
+            ov_search,
+            ov_overview,
+            ov_read,
+            ov_load_skill,
+            ov_add_skill,
+        ]
