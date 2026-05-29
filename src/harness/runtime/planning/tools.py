@@ -10,7 +10,7 @@ from typing import List, Any
 from agents import function_tool
 
 from build_in.tools.base_tools import BaseTools
-from .state_machine import TaskStatus
+from runtime.state_machine import TaskStatus
 
 # 模块级变量：@function_tool 闭包通过此引用读取，由 PlanningTools.__init__ 注入
 _sm = None

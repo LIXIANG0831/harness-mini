@@ -1,7 +1,6 @@
 """任务规划相关的提示词模板。"""
 
-
-def build_nudge_message(remaining: int, current_idx: int, current_desc: str) -> str:
+def get_nudge_message(remaining: int, current_idx: int, current_desc: str) -> str:
     """构造"计划未完成自动推进"时给智能体的提示。
 
     Args:

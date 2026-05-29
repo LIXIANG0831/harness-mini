@@ -18,9 +18,9 @@ from agents import (
 )
 from openai import AsyncOpenAI
 
-from runtime import TaskStateMachine, PlanningTools
+from runtime import TaskStateMachine, PlanningTools, get_nudge_message
 from build_in.tools import OvTools, ShellTools
-from build_in.prompts import get_main_agent_instructions, load_skills_index, build_nudge_message
+from build_in.prompts import get_main_agent_instructions, get_skills_info
 
 # ==================== 校验配置 ====================
 validate()
@@ -65,8 +65,8 @@ TOOLS = (
 
 
 # ==================== Skills 预加载 ====================
-SKILLS_INDEX = load_skills_index(ov_client, settings.ov.uri_agent)
-print(f"📚 已加载 skills 索引:\n{SKILLS_INDEX}\n")
+SKILLS_INFO = get_skills_info(ov_client, settings.ov.uri_agent)
+print(f"📚 已加载 skills 索引:\n{SKILLS_INFO}\n")
 
 
 # ==================== 会话管理 ====================
@@ -86,7 +86,7 @@ main_agent = Agent(
         ov_user_id=settings.ov.user_id,
         ov_agent_id=settings.ov.agent_id,
         ov_mem_session=settings.ov.mem_session,
-        skills_index=SKILLS_INDEX,
+        skills_info=SKILLS_INFO,
     ),
     tools=TOOLS,
     handoffs=[
@@ -128,7 +128,7 @@ async def main():
                 remaining = len(_sm.steps) - idx
                 next_desc = _sm.steps[idx].desc
                 print(f"⚠️ 计划未完成（还有 {remaining} 步），自动推进... (nudge {nudge_count}/{settings.runtime.nudge_max})\n", flush=True)
-                nudge_msg = build_nudge_message(remaining, idx, next_desc)
+                nudge_msg = get_nudge_message(remaining, idx, next_desc)
                 result = await Runner.run(
                     main_agent,
                     input=nudge_msg,

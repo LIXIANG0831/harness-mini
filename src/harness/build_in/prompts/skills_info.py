@@ -1,7 +1,7 @@
 """Skills 索引加载：扫描当前 Agent 的 skills 目录，构造给 instructions 使用的索引文本。"""
 
 
-def load_skills_index(ov_client, agent_uri: str) -> str:
+def get_skills_info(ov_client, agent_uri: str) -> str:
     """读取当前 Agent 的 skills 目录，返回 skill 名 + abstract 列表，注入到 instructions。
 
     Args:

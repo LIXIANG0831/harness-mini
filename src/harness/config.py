@@ -46,7 +46,7 @@ class OpenVikingConfig(BaseModel):
 
 class SessionConfig(BaseModel):
     """会话配置。env: SESSION__ID / SESSION__DB_PATH / SESSION__LIMIT"""
-    id: str = "harness-ad"
+    id: str = "harness-openai-session"
     db_path: str = "./session.db"
     limit: int = 20
 

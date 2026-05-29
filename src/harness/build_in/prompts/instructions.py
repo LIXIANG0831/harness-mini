@@ -1,14 +1,14 @@
 """智能体指令模板管理。"""
 
 
-def get_main_agent_instructions(ov_user_id: str, ov_agent_id: str, ov_mem_session: str, skills_index: str) -> str:
+def get_main_agent_instructions(ov_user_id: str, ov_agent_id: str, ov_mem_session: str, skills_info: str) -> str:
     """生成主智能体的指令文本。
 
     Args:
         ov_user_id: OpenViking 用户 ID
         ov_agent_id: OpenViking Agent ID
         ov_mem_session: OpenViking 记忆 session 名称
-        skills_index: 技能索引文本（从 load_skills_index 获取）
+        skills_info: 技能索引文本（从 get_skills_info 获取）
 
     Returns:
         完整的智能体指令字符串
@@ -103,7 +103,7 @@ scope 参数取值：`user` / `agent` / `resource` / `all`
 
 以下是当前 Agent 已掌握的技能（名称 + 摘要）。**只看摘要决定相关性，不要预先加载全部**。当摘要表明某 skill 与当前任务相关时，调用 `ov_load_skill(skill_uri)` 获取 SKILL.md 详情后再执行。
 
-{skills_index}
+{skills_info}
 
 ## 任务执行模式
 
