@@ -143,6 +143,7 @@ rabbitmq-data/
 
 # ActiveMQ
 activemq-data/
+.idea/
 
 # SageMath parsed files
 *.sage.py
@@ -156,6 +157,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Session database
+session.db
+session.db-*
 
 # Spyder project settings
 .spyderproject

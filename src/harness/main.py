@@ -1,0 +1,147 @@
+import asyncio
+import os
+
+# 加载配置（会自动加载同目录 .env 文件）
+import config
+
+# 设置代理白名单（必须在导入 openai/openviking 前）
+os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+
+import openviking as ov
+from agents import (
+    Agent,
+    Runner,
+    set_default_openai_api,
+    set_default_openai_client,
+    set_tracing_disabled,
+    SQLiteSession,
+    SessionSettings,
+)
+from openai import AsyncOpenAI
+
+from state_machine import TaskStateMachine
+from build_in.tools import init_tools, get_all_tools
+from build_in.prompts import get_main_agent_instructions, load_skills_index, build_nudge_message
+
+# ==================== 校验配置 ====================
+config.validate()
+
+# ==================== 模型客户端 ====================
+client = AsyncOpenAI(base_url=config.BASE_URL, api_key=config.API_KEY)
+set_default_openai_client(client=client, use_for_tracing=False)
+set_default_openai_api("chat_completions")
+set_tracing_disabled(disabled=True)
+
+# ==================== OpenViking 客户端 ====================
+ov_client = ov.SyncHTTPClient(
+    url=config.OV_URL,
+    user_id=config.OV_USER_ID,
+    agent_id=config.OV_AGENT_ID,
+)
+ov_client.initialize()
+# 确保记忆 session 存在
+try:
+    ov_client.get_session(config.OV_MEM_SESSION, auto_create=True)
+except Exception:
+    pass
+
+# ==================== 任务规划状态机 ====================
+_sm = TaskStateMachine()
+
+# ==================== 初始化工具集 ====================
+init_tools(
+    ov_client=ov_client,
+    uri_user=config.URI_USER,
+    uri_agent=config.URI_AGENT,
+    mem_session=config.OV_MEM_SESSION,
+    state_machine=_sm,
+)
+TOOLS = get_all_tools()
+
+
+# ==================== Skills 预加载 ====================
+SKILLS_INDEX = load_skills_index(ov_client, config.URI_AGENT)
+print(f"📚 已加载 skills 索引:\n{SKILLS_INDEX}\n")
+
+
+# ==================== 会话管理 ====================
+session = SQLiteSession(
+    session_id=config.SESSION_ID,
+    db_path=config.SESSION_DB_PATH,
+    session_settings=SessionSettings(
+        limit=config.SESSION_LIMIT  # 最大 Messages 条数
+    )
+)
+
+# ==================== 智能体定义 ====================
+main_agent = Agent(
+    name="main_agent",
+    model=config.MODEL_NAME,
+    instructions=get_main_agent_instructions(
+        ov_user_id=config.OV_USER_ID,
+        ov_agent_id=config.OV_AGENT_ID,
+        ov_mem_session=config.OV_MEM_SESSION,
+        skills_index=SKILLS_INDEX,
+    ),
+    tools=TOOLS,
+    handoffs=[
+        # 可交接的Agent列表
+    ],
+)
+
+
+async def main():
+    """主程序入口 - 交互式对话"""
+    while True:
+        try:
+            user_input = input(f"👨🏻‍💻: ").strip()
+
+            if user_input.lower() in ["quit", "exit", "退出", "q", "再见"]:
+                print()
+                print("👋🏻再见！")
+                break
+
+            if not user_input:
+                continue
+
+            print(flush=True)
+
+            result = await Runner.run(
+                main_agent,
+                input=user_input,
+                session=session,
+                max_turns=50  # 任务规划需要更多回合
+            )
+            print(f"🤖: {result.final_output}", flush=True)
+            print(flush=True)
+
+            # 保险机制：如果计划没跑完就回复了用户，自动 nudge 继续
+            nudge_count = 0
+            while _sm.is_running and nudge_count < 5:
+                nudge_count += 1
+                idx = _sm.current_step
+                remaining = len(_sm.steps) - idx
+                next_desc = _sm.steps[idx].desc
+                print(f"⚠️ 计划未完成（还有 {remaining} 步），自动推进... (nudge {nudge_count}/5)\n", flush=True)
+                nudge_msg = build_nudge_message(remaining, idx, next_desc)
+                result = await Runner.run(
+                    main_agent,
+                    input=nudge_msg,
+                    session=session,
+                    max_turns=50
+                )
+                print(f"🤖: {result.final_output}", flush=True)
+                print(flush=True)
+
+        except KeyboardInterrupt:
+            print()
+            print("👋🏻再见！")
+            break
+        except Exception as e:
+            error_msg = str(e).lower()
+            print(f"[Error] {error_msg}")
+            print()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
