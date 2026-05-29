@@ -1,8 +1,7 @@
 import asyncio
 import os
 
-# 加载配置（会自动加载同目录 .env 文件）
-import config
+from config import settings, validate
 
 # 设置代理白名单（必须在导入 openai/openviking 前）
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
@@ -24,24 +23,24 @@ from build_in.tools import OvTools, ShellTools
 from build_in.prompts import get_main_agent_instructions, load_skills_index, build_nudge_message
 
 # ==================== 校验配置 ====================
-config.validate()
+validate()
 
 # ==================== 模型客户端 ====================
-client = AsyncOpenAI(base_url=config.BASE_URL, api_key=config.API_KEY)
+client = AsyncOpenAI(base_url=settings.openai.base_url, api_key=settings.openai.api_key)
 set_default_openai_client(client=client, use_for_tracing=False)
 set_default_openai_api("chat_completions")
 set_tracing_disabled(disabled=True)
 
 # ==================== OpenViking 客户端 ====================
 ov_client = ov.SyncHTTPClient(
-    url=config.OV_URL,
-    user_id=config.OV_USER_ID,
-    agent_id=config.OV_AGENT_ID,
+    url=settings.ov.url,
+    user_id=settings.ov.user_id,
+    agent_id=settings.ov.agent_id,
 )
 ov_client.initialize()
 # 确保记忆 session 存在
 try:
-    ov_client.get_session(config.OV_MEM_SESSION, auto_create=True)
+    ov_client.get_session(settings.ov.mem_session, auto_create=True)
 except Exception:
     pass
 
@@ -53,9 +52,9 @@ planning_tools = PlanningTools(state_machine=_sm)
 bash_tools = ShellTools()
 ov_tools = OvTools(
     ov_client=ov_client,
-    uri_user=config.URI_USER,
-    uri_agent=config.URI_AGENT,
-    mem_session=config.OV_MEM_SESSION,
+    uri_user=settings.ov.uri_user,
+    uri_agent=settings.ov.uri_agent,
+    mem_session=settings.ov.mem_session,
 )
 
 TOOLS = (
@@ -66,27 +65,27 @@ TOOLS = (
 
 
 # ==================== Skills 预加载 ====================
-SKILLS_INDEX = load_skills_index(ov_client, config.URI_AGENT)
+SKILLS_INDEX = load_skills_index(ov_client, settings.ov.uri_agent)
 print(f"📚 已加载 skills 索引:\n{SKILLS_INDEX}\n")
 
 
 # ==================== 会话管理 ====================
 session = SQLiteSession(
-    session_id=config.SESSION_ID,
-    db_path=config.SESSION_DB_PATH,
+    session_id=settings.session.id,
+    db_path=settings.session.db_path,
     session_settings=SessionSettings(
-        limit=config.SESSION_LIMIT  # 最大 Messages 条数
+        limit=settings.session.limit  # 最大 Messages 条数
     )
 )
 
 # ==================== 智能体定义 ====================
 main_agent = Agent(
     name="main_agent",
-    model=config.MODEL_NAME,
+    model=settings.openai.model_name,
     instructions=get_main_agent_instructions(
-        ov_user_id=config.OV_USER_ID,
-        ov_agent_id=config.OV_AGENT_ID,
-        ov_mem_session=config.OV_MEM_SESSION,
+        ov_user_id=settings.ov.user_id,
+        ov_agent_id=settings.ov.agent_id,
+        ov_mem_session=settings.ov.mem_session,
         skills_index=SKILLS_INDEX,
     ),
     tools=TOOLS,
@@ -116,25 +115,25 @@ async def main():
                 main_agent,
                 input=user_input,
                 session=session,
-                max_turns=50  # 任务规划需要更多回合
+                max_turns=settings.runtime.max_turns
             )
             print(f"🤖: {result.final_output}", flush=True)
             print(flush=True)
 
             # 保险机制：如果计划没跑完就回复了用户，自动 nudge 继续
             nudge_count = 0
-            while _sm.is_running and nudge_count < 5:
+            while _sm.is_running and nudge_count < settings.runtime.nudge_max:
                 nudge_count += 1
                 idx = _sm.current_step
                 remaining = len(_sm.steps) - idx
                 next_desc = _sm.steps[idx].desc
-                print(f"⚠️ 计划未完成（还有 {remaining} 步），自动推进... (nudge {nudge_count}/5)\n", flush=True)
+                print(f"⚠️ 计划未完成（还有 {remaining} 步），自动推进... (nudge {nudge_count}/{settings.runtime.nudge_max})\n", flush=True)
                 nudge_msg = build_nudge_message(remaining, idx, next_desc)
                 result = await Runner.run(
                     main_agent,
                     input=nudge_msg,
                     session=session,
-                    max_turns=50
+                    max_turns=settings.runtime.max_turns
                 )
                 print(f"🤖: {result.final_output}", flush=True)
                 print(flush=True)
