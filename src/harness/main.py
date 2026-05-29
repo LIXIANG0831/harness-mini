@@ -66,7 +66,6 @@ TOOLS = (
 
 # ==================== Skills 预加载 ====================
 SKILLS_INFO = get_skills_info(ov_client, settings.ov.uri_agent)
-print(f"📚 已加载 skills 索引:\n{SKILLS_INFO}\n")
 
 
 # ==================== 会话管理 ====================
@@ -95,15 +94,41 @@ main_agent = Agent(
 )
 
 
+# ==================== 终端 UI 辅助 ====================
+def _print_banner():
+    line = "─" * 60
+    print(line)
+    print(f"  🤖 Harness Mini  ·  model: {settings.openai.model_name}")
+    print(f"  user: {settings.ov.user_id}    agent: {settings.ov.agent_id}    session: {settings.session.id}")
+    print(f"  tools: {len(TOOLS)}    max_turns: {settings.runtime.max_turns}    nudge_max: {settings.runtime.nudge_max}")
+    print(line)
+    print("  输入消息开始对话；输入 quit / exit / q / 退出 / 再见 结束。")
+    print(line)
+    if SKILLS_INFO:
+        print(f"📚 已加载 skills 索引:\n{SKILLS_INFO}")
+        print(line)
+
+
+def _print_reply(text: str):
+    print(f"🤖 {text}\n", flush=True)
+
+
+def _print_nudge(remaining: int, count: int):
+    print(
+        f"\n⚠️  计划未完成（剩余 {remaining} 步），自动推进 [{count}/{settings.runtime.nudge_max}]\n",
+        flush=True,
+    )
+
+
 async def main():
     """主程序入口 - 交互式对话"""
+    _print_banner()
     while True:
         try:
-            user_input = input(f"👨🏻‍💻: ").strip()
+            user_input = input("\n👨🏻‍💻 ").strip()
 
-            if user_input.lower() in ["quit", "exit", "退出", "q", "再见"]:
-                print()
-                print("👋🏻再见！")
+            if user_input.lower() in {"quit", "exit", "退出", "q", "再见"}:
+                print("\n👋🏻 再见！")
                 break
 
             if not user_input:
@@ -115,10 +140,9 @@ async def main():
                 main_agent,
                 input=user_input,
                 session=session,
-                max_turns=settings.runtime.max_turns
+                max_turns=settings.runtime.max_turns,
             )
-            print(f"🤖: {result.final_output}", flush=True)
-            print(flush=True)
+            _print_reply(result.final_output)
 
             # 保险机制：如果计划没跑完就回复了用户，自动 nudge 继续
             nudge_count = 0
@@ -127,25 +151,21 @@ async def main():
                 idx = _sm.current_step
                 remaining = len(_sm.steps) - idx
                 next_desc = _sm.steps[idx].desc
-                print(f"⚠️ 计划未完成（还有 {remaining} 步），自动推进... (nudge {nudge_count}/{settings.runtime.nudge_max})\n", flush=True)
+                _print_nudge(remaining, nudge_count)
                 nudge_msg = get_nudge_message(remaining, idx, next_desc)
                 result = await Runner.run(
                     main_agent,
                     input=nudge_msg,
                     session=session,
-                    max_turns=settings.runtime.max_turns
+                    max_turns=settings.runtime.max_turns,
                 )
-                print(f"🤖: {result.final_output}", flush=True)
-                print(flush=True)
+                _print_reply(result.final_output)
 
         except KeyboardInterrupt:
-            print()
-            print("👋🏻再见！")
+            print("\n\n👋🏻 再见！")
             break
         except Exception as e:
-            error_msg = str(e).lower()
-            print(f"[Error] {error_msg}")
-            print()
+            print(f"\n❌ [Error] {e}\n", flush=True)
 
 
 if __name__ == "__main__":
